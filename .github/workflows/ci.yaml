@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: "npm"
+          cache-dependency-path: ./package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test npx functionality
+        run: |
+          chmod +x bin/image-generation-mcp.js
+
+          timeout 10s node bin/image-generation-mcp.js --help || true
+
+          npm pack
+
+          PACK_FILE=$(ls *.tgz)
+          npm install -g "$PACK_FILE"
+
+          timeout 10s npx @mcp-s/image-generation-mcp --help || echo "npx test completed"

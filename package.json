@@ -1,0 +1,41 @@
+{
+  "name": "@mcp-s/image-generation-mcp",
+  "version": "1.0.0",
+  "mcpName": "io.github.shalevshalit/image-generation-mcp",
+  "description": "MCP server for AI-powered image generation using Google Gemini models.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "dist/index.js",
+  "bin": {
+    "@mcp-s/image-generation-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc && shx chmod +x dist/*.js",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcp-ai/image-generation-mcp.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Shalev Shalit",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.12",
+    "shx": "^0.4.0",
+    "typescript": "^5.0.0"
+  }
+}
