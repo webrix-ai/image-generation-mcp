@@ -31,7 +31,7 @@ server.registerTool(
   },
   async ({ prompt }: { prompt: string }) => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-3.1-flash-image-preview",
       contents: prompt,
       config: {
         responseModalities: ["Text", "Image"],
