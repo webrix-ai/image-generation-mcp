@@ -10,6 +10,7 @@ This MCP server enables AI assistants to generate images from text prompts. It l
 
 - **Image Generation**: Generate images from text prompts and receive base64-encoded output
 - **Google Gemini Integration**: Uses Google's latest Gemini models for high-quality image generation
+- **Cloudinary Hosting (Optional)**: Automatically upload generated images to Cloudinary and get back a hosted URL
 - **MCP Protocol**: Fully compatible with the Model Context Protocol standard
 - **TypeScript**: Built with TypeScript for type safety and better development experience
 - **Simple API**: Easy-to-use interface for image generation requests
@@ -21,6 +22,7 @@ This MCP server enables AI assistants to generate images from text prompts. It l
 - Node.js 18+
 - npm or yarn
 - Google Gemini API key
+- (Optional) Cloudinary account for hosted image URLs
 
 ### MCP Client Configuration
 
@@ -42,17 +44,51 @@ To use this server with an MCP client, add the following configuration:
 
 **⚠️ IMPORTANT:** The `env` section with your Gemini API key is required - this is the only way the MCP server can function.
 
+#### With Cloudinary (optional)
+
+To have generated images automatically uploaded to Cloudinary and returned as hosted URLs, add your Cloudinary credentials:
+
+```json
+{
+  "mcpServers": {
+    "image-generation": {
+      "command": "npx",
+      "args": ["-y", "@mcp-s/image-generation-mcp"],
+      "env": {
+        "GEMINI_API_KEY": "your-actual-gemini-api-key-here",
+        "CLOUDINARY_CLOUD_NAME": "your-cloud-name",
+        "CLOUDINARY_API_KEY": "your-cloudinary-api-key",
+        "CLOUDINARY_API_SECRET": "your-cloudinary-api-secret"
+      }
+    }
+  }
+}
+```
+
+When all three Cloudinary env vars are set, the tool uploads images and returns a URL by default. You can still use the `inline` parameter to get raw image data instead.
+
 ## Usage
 
 ### Available Tools
 
 #### `generate-image`
 
-Generates an image from a text prompt and returns the base64-encoded image data.
+Generates an image from a text prompt.
 
 **Parameters:**
 
-- `prompt` (string): The text prompt describing the image to generate
+- `prompt` (string, required): The text prompt describing the image to generate
+- `inline` (boolean, optional): Controls the response format (see below)
+
+**Response behavior:**
+
+| Cloudinary configured? | `inline` value | Response |
+|---|---|---|
+| No | omitted / `true` | MCP image content (base64) |
+| No | `false` | JSON with `{ mimeType, data, sizeBytes }` |
+| Yes | omitted | Cloudinary hosted URL (text) |
+| Yes | `true` | MCP image content (base64) |
+| Yes | `false` | JSON with `{ mimeType, data, sizeBytes }` |
 
 **Example:**
 
@@ -65,7 +101,7 @@ Generates an image from a text prompt and returns the base64-encoded image data.
 }
 ```
 
-**Response:**
+**Response (without Cloudinary):**
 
 ```json
 {
@@ -74,6 +110,19 @@ Generates an image from a text prompt and returns the base64-encoded image data.
       "type": "image",
       "data": "<base64-encoded-image-data>",
       "mimeType": "image/png"
+    }
+  ]
+}
+```
+
+**Response (with Cloudinary):**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/abc123.png"
     }
   ]
 }
@@ -108,6 +157,17 @@ npm install
 npm run build
 ```
 
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `CLOUDINARY_CLOUD_NAME` | No | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | No | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | No | Cloudinary API secret |
+
+All three Cloudinary variables must be set to enable Cloudinary uploads. If any are missing, the server falls back to returning raw image data.
+
 ### Error Handling
 
 The server includes error handling for:
@@ -117,6 +177,7 @@ The server includes error handling for:
 - Gemini API errors
 - Invalid input parameters
 - Cases where no image is generated
+- Cloudinary upload failures (when configured)
 
 ## Troubleshooting
 
