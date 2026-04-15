@@ -24,12 +24,18 @@ server.registerTool(
   {
     title: "Generate Image",
     description:
-      "Generate an image from a text prompt using Google Gemini and return the base64-encoded image data",
+      "Generate an image from a text prompt using Google Gemini. Default: MCP image content for chat preview. Set inline to false to get a single text part containing JSON { mimeType, data (base64), sizeBytes } for upload APIs (no temp files).",
     inputSchema: {
       prompt: z.string().describe("The text prompt describing the image to generate"),
+      inline: z
+        .boolean()
+        .optional()
+        .describe(
+          "If true (default), return only image content. If false, return only one text part with JSON including base64 data (easier to pipe into Drive/upload tools)."
+        ),
     },
   },
-  async ({ prompt }: { prompt: string }) => {
+  async ({ prompt, inline = true }: { prompt: string; inline?: boolean }) => {
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-image-preview",
       contents: prompt,
@@ -40,12 +46,27 @@ server.registerTool(
 
     for (const part of response.candidates?.[0]?.content?.parts ?? []) {
       if (part.inlineData) {
+        const mimeType = part.inlineData.mimeType ?? "image/png";
+        const data = part.inlineData.data!;
+        const sizeBytes = Buffer.from(data, "base64").length;
+
+        if (!inline) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({ mimeType, data, sizeBytes }),
+              },
+            ],
+          };
+        }
+
         return {
           content: [
             {
               type: "image" as const,
-              data: part.inlineData.data!,
-              mimeType: part.inlineData.mimeType ?? "image/png",
+              data,
+              mimeType,
             },
           ],
         };
