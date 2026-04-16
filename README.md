@@ -4,16 +4,16 @@ A Model Context Protocol (MCP) server that provides AI-powered image generation 
 
 ## Overview
 
-This MCP server enables AI assistants to generate images from text prompts. It leverages Google's Gemini models to create images and returns them as base64-encoded data, making it easy to integrate image generation capabilities into your AI workflows.
+This MCP server enables AI assistants to generate images from text prompts. It leverages Google's Gemini models to create images and returns both a hosted URL and base64-encoded data by default — the URL for chaining into subsequent generation calls, and the base64 for local decoding and presentation in chat.
 
 ## Features
 
-- **Image Generation**: Generate images from text prompts and receive base64-encoded output
+- **Dual Output**: Returns both a hosted URL and base64 image data by default (configurable via `outputType`)
+- **Generation Controls**: Adjust resolution (`imageSize`), aspect ratio, output format (`mimeType`), and creative variation (`temperature`)
 - **Google Gemini Integration**: Uses Google's latest Gemini models for high-quality image generation
-- **Cloud Hosting (Optional)**: Automatically upload generated images to **Cloudinary** or **Azure Blob Storage** and get back a hosted URL
+- **Cloud Hosting (Optional)**: Automatically upload generated images to **Cloudinary** or **Azure Blob Storage**
 - **MCP Protocol**: Fully compatible with the Model Context Protocol standard
 - **TypeScript**: Built with TypeScript for type safety and better development experience
-- **Simple API**: Easy-to-use interface for image generation requests
 
 ## Installation
 
@@ -65,7 +65,7 @@ To have generated images automatically uploaded to Cloudinary and returned as ho
 }
 ```
 
-When all three Cloudinary env vars are set, the tool uploads images and returns a URL by default. You can still use the `inline` parameter to get raw image data instead.
+When all three Cloudinary env vars are set, the default `outputType` of `"both"` uploads the image and returns a JSON response containing both the hosted URL and base64 data.
 
 #### With Azure Blob Storage (optional)
 
@@ -101,20 +101,26 @@ Generates an image from a text prompt.
 
 **Parameters:**
 
-- `prompt` (string, required): The text prompt describing the image to generate
-- `inline` (boolean, optional): Controls the response format (see below)
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `prompt` | string | Yes | The text prompt describing the image to generate |
+| `imageSize` | enum | No | Resolution: `"512"`, `"1K"` (default), `"2K"`, `"4K"`. `"512"` requires Flash model; `"4K"` requires Pro model |
+| `aspectRatio` | enum | No | Aspect ratio: `"1:1"` (default), `"1:4"`, `"1:8"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:1"`, `"4:3"`, `"4:5"`, `"5:4"`, `"8:1"`, `"9:16"`, `"16:9"`, `"21:9"` |
+| `mimeType` | enum | No | Output format: `"image/png"` (default), `"image/jpeg"`, `"image/webp"` |
+| `temperature` | number | No | Creative variation, `0.0`–`2.0` |
+| `outputType` | enum | No | `"both"` (default), `"only-url"`, `"only-image"` |
 
-**Response behavior:**
+**`outputType` behavior:**
 
-| Storage configured? | `inline` value | Response |
+| `outputType` | Storage configured? | Response |
 |---|---|---|
-| None | omitted / `true` | MCP image content (base64) |
-| None | `false` | JSON with `{ mimeType, data, sizeBytes }` |
-| Cloudinary or Azure | omitted | Hosted URL (text) |
-| Cloudinary or Azure | `true` | MCP image content (base64) |
-| Cloudinary or Azure | `false` | JSON with `{ mimeType, data, sizeBytes }` |
+| `"both"` (default) | Yes | JSON: `{ url, mimeType, data }` |
+| `"both"` (default) | No | Falls back to `"only-image"`: JSON `{ mimeType, data }` |
+| `"only-url"` | Yes | JSON: `{ url, mimeType }` |
+| `"only-url"` | No | Error — storage provider required |
+| `"only-image"` | Either | JSON: `{ mimeType, data }` |
 
-**Example:**
+**Example — basic prompt:**
 
 ```json
 {
@@ -125,32 +131,62 @@ Generates an image from a text prompt.
 }
 ```
 
-**Response (no storage configured):**
+**Example — with generation parameters:**
 
 ```json
 {
-  "content": [
-    {
-      "type": "image",
-      "data": "<base64-encoded-image-data>",
-      "mimeType": "image/png"
-    }
-  ]
+  "tool": "generate-image",
+  "arguments": {
+    "prompt": "A nano banana dish in a fancy restaurant with a Gemini theme",
+    "imageSize": "2K",
+    "aspectRatio": "16:9",
+    "mimeType": "image/jpeg",
+    "temperature": 0.8,
+    "outputType": "both"
+  }
 }
 ```
 
-**Response (with Cloudinary or Azure Blob):**
+**Response (`outputType: "both"`, storage configured):**
 
 ```json
 {
   "content": [
     {
       "type": "text",
-      "text": "https://res.cloudinary.com/your-cloud/image/upload/v1234567890/abc123.png"
+      "text": "{\"url\":\"https://your-storage.blob.core.windows.net/images/abc123.jpeg\",\"mimeType\":\"image/jpeg\",\"data\":\"<base64>\"}"
     }
   ]
 }
 ```
+
+**Response (`outputType: "only-url"`):**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"url\":\"https://your-storage.blob.core.windows.net/images/abc123.jpeg\",\"mimeType\":\"image/jpeg\"}"
+    }
+  ]
+}
+```
+
+**Response (`outputType: "only-image"` or no storage configured):**
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"mimeType\":\"image/jpeg\",\"data\":\"<base64>\"}"
+    }
+  ]
+}
+```
+
+> **Note for AI assistants:** The tool description instructs Claude to always decode the base64 from disk and use `present_files` to show the image in chat — never loading raw base64 into context. The URL should be used for subsequent image generation calls as `file_data` input.
 
 ### Integration with AI Assistants
 

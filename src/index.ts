@@ -80,58 +80,127 @@ const storageLabel = cloudinaryEnabled
     ? "Azure Blob Storage"
     : null;
 
+const IMAGE_SIZES = ["512", "1K", "2K", "4K"] as const;
+const ASPECT_RATIOS = [
+  "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
+  "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
+] as const;
+const OUTPUT_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+const OUTPUT_TYPES = ["both", "only-url", "only-image"] as const;
+
+type ToolInput = {
+  prompt: string;
+  imageSize?: (typeof IMAGE_SIZES)[number];
+  aspectRatio?: (typeof ASPECT_RATIOS)[number];
+  mimeType?: (typeof OUTPUT_MIME_TYPES)[number];
+  temperature?: number;
+  outputType?: (typeof OUTPUT_TYPES)[number];
+};
+
+const toolDescription = [
+  "Generate an image from a text prompt using Google Gemini.",
+  uploadEnabled
+    ? `Storage provider: ${storageLabel}.`
+    : "No storage provider configured — only 'only-image' output is available.",
+  "The response contains a URL and base64 image data.",
+  "Always decode the base64 from disk and use present_files to show the image in chat.",
+  "Never load the raw base64 into context.",
+  "Use the URL for any subsequent image generation calls as file_data input.",
+].join(" ");
+
 server.registerTool(
   "generate-image",
   {
     title: "Generate Image",
-    description: uploadEnabled
-      ? `Generate an image from a text prompt using Google Gemini. When ${storageLabel} is configured, returns a hosted URL by default. Set inline to true for raw MCP image content, or false for JSON with base64 data.`
-      : "Generate an image from a text prompt using Google Gemini. Default: MCP image content for chat preview. Set inline to false to get a single text part containing JSON { mimeType, data (base64), sizeBytes } for upload APIs (no temp files).",
+    description: toolDescription,
     inputSchema: {
       prompt: z.string().describe("The text prompt describing the image to generate"),
-      inline: z
-        .boolean()
+      imageSize: z
+        .enum(IMAGE_SIZES)
         .optional()
         .describe(
-          uploadEnabled
-            ? `If true, return raw MCP image content. If false, return JSON with base64 data. If omitted (default), upload to ${storageLabel} and return a hosted URL.`
-            : "If true (default), return only image content. If false, return only one text part with JSON including base64 data (easier to pipe into Drive/upload tools)."
+          "Resolution of the output image. '512' is only supported on gemini-3.1-flash-image-preview; '4K' requires gemini-3-pro-image-preview. Default: '1K'"
+        ),
+      aspectRatio: z
+        .enum(ASPECT_RATIOS)
+        .optional()
+        .describe("Aspect ratio of the output image. Default: '1:1'"),
+      mimeType: z
+        .enum(OUTPUT_MIME_TYPES)
+        .optional()
+        .describe("Output image format. Default: 'image/png'"),
+      temperature: z
+        .number()
+        .min(0)
+        .max(2)
+        .optional()
+        .describe("Controls creative variation (0.0–2.0)"),
+      outputType: z
+        .enum(OUTPUT_TYPES)
+        .optional()
+        .describe(
+          "'both' (default): return JSON with { url, mimeType, data }. " +
+            "'only-url': return JSON with { url, mimeType } (requires storage provider). " +
+            "'only-image': return JSON with { mimeType, data }."
         ),
     },
   },
-  async ({ prompt, inline }: { prompt: string; inline?: boolean }) => {
+  async ({ prompt, imageSize, aspectRatio, mimeType, temperature, outputType }: ToolInput) => {
+    const effectiveOutput = outputType ?? "both";
+
+    if (effectiveOutput === "only-url" && !uploadEnabled) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "Error: outputType 'only-url' requires a storage provider (Cloudinary or Azure Blob Storage) to be configured.",
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const imageConfig: Record<string, string> = {};
+    if (imageSize) imageConfig.imageSize = imageSize;
+    if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
+    if (mimeType) imageConfig.outputMimeType = mimeType;
+
+    const config: Record<string, unknown> = {
+      responseModalities: ["IMAGE"],
+    };
+    if (Object.keys(imageConfig).length > 0) config.imageConfig = imageConfig;
+    if (temperature !== undefined) config.temperature = temperature;
+
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-image-preview",
       contents: prompt,
-      config: {
-        responseModalities: ["Text", "Image"],
-      },
+      config,
     });
 
     for (const part of response.candidates?.[0]?.content?.parts ?? []) {
       if (part.inlineData) {
-        const mimeType = part.inlineData.mimeType ?? "image/png";
+        const responseMime = part.inlineData.mimeType ?? "image/png";
         const data = part.inlineData.data!;
-        const sizeBytes = Buffer.from(data, "base64").length;
 
-        if (uploadEnabled && inline === undefined) {
-          const url = await uploadImage(data, mimeType);
+        if (effectiveOutput === "only-image" || !uploadEnabled) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: url,
+                text: JSON.stringify({ mimeType: responseMime, data }),
               },
             ],
           };
         }
 
-        if (inline === false) {
+        const url = await uploadImage(data, responseMime);
+
+        if (effectiveOutput === "only-url") {
           return {
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify({ mimeType, data, sizeBytes }),
+                text: JSON.stringify({ url, mimeType: responseMime }),
               },
             ],
           };
@@ -140,9 +209,8 @@ server.registerTool(
         return {
           content: [
             {
-              type: "image" as const,
-              data,
-              mimeType,
+              type: "text" as const,
+              text: JSON.stringify({ url, mimeType: responseMime, data }),
             },
           ],
         };
