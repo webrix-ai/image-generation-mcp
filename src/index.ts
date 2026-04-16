@@ -4,14 +4,24 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { GoogleGenAI } from "@google/genai";
 import { v2 as cloudinary } from "cloudinary";
+import { BlobServiceClient } from "@azure/storage-blob";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const cloudinaryEnabled =
+// --- Storage provider setup ---
+
+const cloudinaryEnabled = !!(
   process.env.CLOUDINARY_CLOUD_NAME &&
   process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET;
+  process.env.CLOUDINARY_API_SECRET
+);
+
+const azureBlobEnabled = !!(
+  process.env.AZURE_STORAGE_CONNECTION_STRING &&
+  process.env.AZURE_STORAGE_CONTAINER_NAME
+);
 
 if (cloudinaryEnabled) {
   cloudinary.config({
@@ -21,15 +31,35 @@ if (cloudinaryEnabled) {
   });
 }
 
-async function uploadToCloudinary(
+const uploadEnabled = cloudinaryEnabled || azureBlobEnabled;
+
+async function uploadImage(
   base64Data: string,
   mimeType: string
 ): Promise<string> {
-  const dataUri = `data:${mimeType};base64,${base64Data}`;
-  const result = await cloudinary.uploader.upload(dataUri, {
-    resource_type: "image",
+  if (cloudinaryEnabled) {
+    const dataUri = `data:${mimeType};base64,${base64Data}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      resource_type: "image",
+    });
+    return result.secure_url;
+  }
+
+  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING!;
+  const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME!;
+  const ext = mimeType.split("/")[1] ?? "png";
+  const blobName = `${randomUUID()}.${ext}`;
+
+  const blobService = BlobServiceClient.fromConnectionString(connectionString);
+  const container = blobService.getContainerClient(containerName);
+  const blockBlob = container.getBlockBlobClient(blobName);
+
+  const buffer = Buffer.from(base64Data, "base64");
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mimeType },
   });
-  return result.secure_url;
+
+  return blockBlob.url;
 }
 
 const server = new McpServer(
@@ -44,12 +74,18 @@ const server = new McpServer(
   }
 );
 
+const storageLabel = cloudinaryEnabled
+  ? "Cloudinary"
+  : azureBlobEnabled
+    ? "Azure Blob Storage"
+    : null;
+
 server.registerTool(
   "generate-image",
   {
     title: "Generate Image",
-    description: cloudinaryEnabled
-      ? "Generate an image from a text prompt using Google Gemini. When Cloudinary is configured, returns a hosted URL by default. Set inline to true for raw MCP image content, or false for JSON with base64 data."
+    description: uploadEnabled
+      ? `Generate an image from a text prompt using Google Gemini. When ${storageLabel} is configured, returns a hosted URL by default. Set inline to true for raw MCP image content, or false for JSON with base64 data.`
       : "Generate an image from a text prompt using Google Gemini. Default: MCP image content for chat preview. Set inline to false to get a single text part containing JSON { mimeType, data (base64), sizeBytes } for upload APIs (no temp files).",
     inputSchema: {
       prompt: z.string().describe("The text prompt describing the image to generate"),
@@ -57,8 +93,8 @@ server.registerTool(
         .boolean()
         .optional()
         .describe(
-          cloudinaryEnabled
-            ? "If true, return raw MCP image content. If false, return JSON with base64 data. If omitted (default), upload to Cloudinary and return a hosted URL."
+          uploadEnabled
+            ? `If true, return raw MCP image content. If false, return JSON with base64 data. If omitted (default), upload to ${storageLabel} and return a hosted URL.`
             : "If true (default), return only image content. If false, return only one text part with JSON including base64 data (easier to pipe into Drive/upload tools)."
         ),
     },
@@ -78,8 +114,8 @@ server.registerTool(
         const data = part.inlineData.data!;
         const sizeBytes = Buffer.from(data, "base64").length;
 
-        if (cloudinaryEnabled && inline === undefined) {
-          const url = await uploadToCloudinary(data, mimeType);
+        if (uploadEnabled && inline === undefined) {
+          const url = await uploadImage(data, mimeType);
           return {
             content: [
               {

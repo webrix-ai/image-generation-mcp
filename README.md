@@ -10,7 +10,7 @@ This MCP server enables AI assistants to generate images from text prompts. It l
 
 - **Image Generation**: Generate images from text prompts and receive base64-encoded output
 - **Google Gemini Integration**: Uses Google's latest Gemini models for high-quality image generation
-- **Cloudinary Hosting (Optional)**: Automatically upload generated images to Cloudinary and get back a hosted URL
+- **Cloud Hosting (Optional)**: Automatically upload generated images to **Cloudinary** or **Azure Blob Storage** and get back a hosted URL
 - **MCP Protocol**: Fully compatible with the Model Context Protocol standard
 - **TypeScript**: Built with TypeScript for type safety and better development experience
 - **Simple API**: Easy-to-use interface for image generation requests
@@ -22,7 +22,7 @@ This MCP server enables AI assistants to generate images from text prompts. It l
 - Node.js 18+
 - npm or yarn
 - Google Gemini API key
-- (Optional) Cloudinary account for hosted image URLs
+- (Optional) Cloudinary account **or** Azure Storage account for hosted image URLs
 
 ### MCP Client Configuration
 
@@ -67,6 +67,30 @@ To have generated images automatically uploaded to Cloudinary and returned as ho
 
 When all three Cloudinary env vars are set, the tool uploads images and returns a URL by default. You can still use the `inline` parameter to get raw image data instead.
 
+#### With Azure Blob Storage (optional)
+
+To upload generated images to Azure Blob Storage instead, provide your connection string and container name:
+
+```json
+{
+  "mcpServers": {
+    "image-generation": {
+      "command": "npx",
+      "args": ["-y", "@mcp-s/image-generation-mcp"],
+      "env": {
+        "GEMINI_API_KEY": "your-actual-gemini-api-key-here",
+        "AZURE_STORAGE_CONNECTION_STRING": "DefaultEndpointsProtocol=https;AccountName=...",
+        "AZURE_STORAGE_CONTAINER_NAME": "generated-images"
+      }
+    }
+  }
+}
+```
+
+The container must already exist. Each image is uploaded with a unique UUID filename and the correct content type.
+
+> **Note:** If both Cloudinary and Azure env vars are set, Cloudinary takes priority.
+
 ## Usage
 
 ### Available Tools
@@ -82,13 +106,13 @@ Generates an image from a text prompt.
 
 **Response behavior:**
 
-| Cloudinary configured? | `inline` value | Response |
+| Storage configured? | `inline` value | Response |
 |---|---|---|
-| No | omitted / `true` | MCP image content (base64) |
-| No | `false` | JSON with `{ mimeType, data, sizeBytes }` |
-| Yes | omitted | Cloudinary hosted URL (text) |
-| Yes | `true` | MCP image content (base64) |
-| Yes | `false` | JSON with `{ mimeType, data, sizeBytes }` |
+| None | omitted / `true` | MCP image content (base64) |
+| None | `false` | JSON with `{ mimeType, data, sizeBytes }` |
+| Cloudinary or Azure | omitted | Hosted URL (text) |
+| Cloudinary or Azure | `true` | MCP image content (base64) |
+| Cloudinary or Azure | `false` | JSON with `{ mimeType, data, sizeBytes }` |
 
 **Example:**
 
@@ -101,7 +125,7 @@ Generates an image from a text prompt.
 }
 ```
 
-**Response (without Cloudinary):**
+**Response (no storage configured):**
 
 ```json
 {
@@ -115,7 +139,7 @@ Generates an image from a text prompt.
 }
 ```
 
-**Response (with Cloudinary):**
+**Response (with Cloudinary or Azure Blob):**
 
 ```json
 {
@@ -165,8 +189,10 @@ npm run build
 | `CLOUDINARY_CLOUD_NAME` | No | Cloudinary cloud name |
 | `CLOUDINARY_API_KEY` | No | Cloudinary API key |
 | `CLOUDINARY_API_SECRET` | No | Cloudinary API secret |
+| `AZURE_STORAGE_CONNECTION_STRING` | No | Azure Storage account connection string |
+| `AZURE_STORAGE_CONTAINER_NAME` | No | Azure Blob container name |
 
-All three Cloudinary variables must be set to enable Cloudinary uploads. If any are missing, the server falls back to returning raw image data.
+All three Cloudinary variables must be set to enable Cloudinary uploads. Both Azure variables must be set to enable Azure Blob uploads. If both providers are configured, Cloudinary takes priority. If neither is configured, the server returns raw image data.
 
 ### Error Handling
 
@@ -178,6 +204,7 @@ The server includes error handling for:
 - Invalid input parameters
 - Cases where no image is generated
 - Cloudinary upload failures (when configured)
+- Azure Blob upload failures (when configured)
 
 ## Troubleshooting
 

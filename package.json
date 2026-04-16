@@ -1,6 +1,6 @@
 {
   "name": "@mcp-s/image-generation-mcp",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "mcpName": "io.github.shalevshalit/image-generation-mcp",
   "description": "MCP server for AI-powered image generation using Google Gemini models.",
   "type": "module",
@@ -30,6 +30,7 @@
   "author": "Shalev Shalit",
   "license": "ISC",
   "dependencies": {
+    "@azure/storage-blob": "^12.31.0",
     "@google/genai": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.15.0",
     "cloudinary": "^2.9.0"
