@@ -106,7 +106,6 @@ Generates an image from a text prompt.
 | `prompt` | string | Yes | The text prompt describing the image to generate |
 | `imageSize` | enum | No | Resolution: `"512"`, `"1K"` (default), `"2K"`, `"4K"`. `"512"` requires Flash model; `"4K"` requires Pro model |
 | `aspectRatio` | enum | No | Aspect ratio: `"1:1"` (default), `"1:4"`, `"1:8"`, `"2:3"`, `"3:2"`, `"3:4"`, `"4:1"`, `"4:3"`, `"4:5"`, `"5:4"`, `"8:1"`, `"9:16"`, `"16:9"`, `"21:9"` |
-| `mimeType` | enum | No | Output format: `"image/png"` (default), `"image/jpeg"`, `"image/webp"` |
 | `temperature` | number | No | Creative variation, `0.0`–`2.0` |
 | `outputType` | enum | No | `"both"` (default), `"only-url"`, `"only-image"` |
 
@@ -140,7 +139,6 @@ Generates an image from a text prompt.
     "prompt": "A nano banana dish in a fancy restaurant with a Gemini theme",
     "imageSize": "2K",
     "aspectRatio": "16:9",
-    "mimeType": "image/jpeg",
     "temperature": 0.8,
     "outputType": "both"
   }

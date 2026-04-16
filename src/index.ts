@@ -85,14 +85,13 @@ const ASPECT_RATIOS = [
   "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
   "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
 ] as const;
-const OUTPUT_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 const OUTPUT_TYPES = ["both", "only-url", "only-image"] as const;
+const MIME_TYPE = "image/png" as const;
 
 type ToolInput = {
   prompt: string;
   imageSize?: (typeof IMAGE_SIZES)[number];
   aspectRatio?: (typeof ASPECT_RATIOS)[number];
-  mimeType?: (typeof OUTPUT_MIME_TYPES)[number];
   temperature?: number;
   outputType?: (typeof OUTPUT_TYPES)[number];
 };
@@ -125,10 +124,6 @@ server.registerTool(
         .enum(ASPECT_RATIOS)
         .optional()
         .describe("Aspect ratio of the output image. Default: '1:1'"),
-      mimeType: z
-        .enum(OUTPUT_MIME_TYPES)
-        .optional()
-        .describe("Output image format. Default: 'image/png'"),
       temperature: z
         .number()
         .min(0)
@@ -145,7 +140,7 @@ server.registerTool(
         ),
     },
   },
-  async ({ prompt, imageSize, aspectRatio, mimeType, temperature, outputType }: ToolInput) => {
+  async ({ prompt, imageSize, aspectRatio, temperature, outputType }: ToolInput) => {
     const effectiveOutput = outputType ?? "both";
 
     if (effectiveOutput === "only-url" && !uploadEnabled) {
@@ -163,7 +158,6 @@ server.registerTool(
     const imageConfig: Record<string, string> = {};
     if (imageSize) imageConfig.imageSize = imageSize;
     if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
-    if (mimeType) imageConfig.outputMimeType = mimeType;
 
     const config: Record<string, unknown> = {
       responseModalities: ["IMAGE"],
@@ -179,7 +173,6 @@ server.registerTool(
 
     for (const part of response.candidates?.[0]?.content?.parts ?? []) {
       if (part.inlineData) {
-        const responseMime = part.inlineData.mimeType ?? "image/png";
         const data = part.inlineData.data!;
 
         if (effectiveOutput === "only-image" || !uploadEnabled) {
@@ -187,20 +180,20 @@ server.registerTool(
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify({ mimeType: responseMime, data }),
+                text: JSON.stringify({ mimeType: MIME_TYPE, data }),
               },
             ],
           };
         }
 
-        const url = await uploadImage(data, responseMime);
+        const url = await uploadImage(data, MIME_TYPE);
 
         if (effectiveOutput === "only-url") {
           return {
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify({ url, mimeType: responseMime }),
+                text: JSON.stringify({ url, mimeType: MIME_TYPE }),
               },
             ],
           };
@@ -210,7 +203,7 @@ server.registerTool(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ url, mimeType: responseMime, data }),
+              text: JSON.stringify({ url, mimeType: MIME_TYPE, data }),
             },
           ],
         };
